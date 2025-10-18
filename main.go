@@ -1,15 +1,17 @@
 package main
 
 import (
-	"fmt"
+	"encoding/json"
 	"log"
 	"os"
 	"os/exec"
 )
 
-func main() {
+type CopiedText struct {
+	Text string `json:"text"`
+}
 
-	copiedText := []interface{}{}
+func main() {
 
 	// Define the command and its arguments
 	cmd := exec.Command("wl-paste")
@@ -20,9 +22,13 @@ func main() {
 		log.Fatalf("Failed to execute command: %v", err)
 	}
 
-	copiedText = append(copiedText, string(out))
-	fmt.Println(copiedText)
-	os.WriteFile("copied.txt", (out), 0644)
+	copiedText := CopiedText{Text: string(out)}
+	jsonData, err := json.Marshal(copiedText)
+	if err != nil {
+		log.Fatalf("Failed to marshal JSON: %v", err)
+	}
+	os.WriteFile("copied.json", jsonData, 0644)
+
 	if err != nil {
 		log.Fatal(err)
 	}
