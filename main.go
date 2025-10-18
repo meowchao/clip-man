@@ -1,15 +1,9 @@
 package main
 
 import (
-	"encoding/json"
 	"log"
-	"os"
 	"os/exec"
 )
-
-type CopiedText struct {
-	Text string `json:"text"`
-}
 
 func main() {
 
@@ -22,16 +16,6 @@ func main() {
 		log.Fatalf("Failed to execute command: %v", err)
 	}
 
-	copiedText := CopiedText{Text: string(out)}
-	jsonData, err := json.Marshal(copiedText)
-	if err != nil {
-		log.Fatalf("Failed to marshal JSON: %v", err)
-	}
-	os.WriteFile("copied.json", jsonData, 0644)
-
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Println("File written successfully.")
+	saveToJSON(string(out))
 
 }
