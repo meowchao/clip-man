@@ -1,1 +1,1 @@
-{"text":"err = os.WriteFile(\"copied.json\", jsonData, 0644)\n\tif err != nil {\n\t\tlog.Fatal(err)\n\t}\n\tlog.Println(\"File written successfully.\")\n"}
+[{"text":"randomText"},{"text":"meow"}]
