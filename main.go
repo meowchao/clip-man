@@ -24,12 +24,14 @@ func updateJSON(lastCopied string) {
 	if err != nil {
 		log.Fatalf("Failed to marshal JSON: %v", err)
 	}
-	err = json.Unmarshal(jsonData, &clipboard)
-	if err != nil {
-		log.Fatalln("failed to unmarshal json:", err)
+	if len(jsonData) != 0 {
+		err = json.Unmarshal(jsonData, &clipboard)
+		if err != nil {
+			log.Fatalln("failed to unmarshal json:", err)
+		}
 	}
 
-	if len(clipboard) == 0 || clipboard[len(clipboard)-1].Text != lastCopied {
+	if clipboard[len(clipboard)-1].Text != lastCopied {
 		clipboard = append(clipboard, ClipboardData{Text: lastCopied})
 	}
 	newJson, err := json.Marshal(clipboard)
