@@ -5,56 +5,123 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"os/signal"
+	"sync"
+	"syscall"
 	"time"
 )
 
+const (
+	filename     = "copied.json"
+	maxHistory   = 10
+	pollInterval = 5 * time.Second
+)
+
 type ClipboardData struct {
-	Text string `json:"text"`
+	Text      string    `json:"text"`
+	Timestamp time.Time `json:"timestamp"`
 }
 
-var clipboard []ClipboardData
+var (
+	clipboard []ClipboardData
+	mu        sync.Mutex
+)
 
-func updateJSON(lastCopied string) {
-	filename := "copied.json"
+func loadClipboard() error {
+	mu.Lock()
+	defer mu.Unlock()
+
 	jsonData, err := os.ReadFile(filename)
 	if os.IsNotExist(err) {
-		os.WriteFile(filename, []byte(`[{"text":"randomText"}]`), 0644)
-		return
+		clipboard = []ClipboardData{}
+		return saveClipboard()
 	}
 	if err != nil {
-		log.Fatalf("Failed to marshal JSON: %v", err)
+		return err
 	}
-	if len(jsonData) != 0 {
+
+	if len(jsonData) > 0 {
 		err = json.Unmarshal(jsonData, &clipboard)
 		if err != nil {
-			log.Fatalln("failed to unmarshal json:", err)
+			return err
 		}
 	}
+	return nil
+}
 
-	if clipboard[len(clipboard)-1].Text != lastCopied {
-		clipboard = append(clipboard, ClipboardData{Text: lastCopied})
-	}
-	newJson, err := json.Marshal(clipboard)
+func saveClipboard() error {
+	newJson, err := json.MarshalIndent(clipboard, "", "  ")
 	if err != nil {
-		log.Fatalln("failed to unmarshal json:", err)
+		return err
 	}
-	err = os.WriteFile(filename, newJson, 0644)
-	if err != nil {
-		log.Fatalln("failed to write to file:", err)
-	}
-	log.Println("File written successfully.")
+	return os.WriteFile(filename, newJson, 0644)
+}
 
+func updateClipboard(lastCopied string) error {
+	mu.Lock()
+	defer mu.Unlock()
+
+	lastCopied = string([]byte(lastCopied)) // trim trailing newline if needed
+	if len(lastCopied) == 0 {
+		return nil // ignore empty clipboard
+	}
+
+	// Check if this is different from the last entry
+	if len(clipboard) > 0 && clipboard[len(clipboard)-1].Text == lastCopied {
+		return nil // duplicate, skip
+	}
+
+	// Enforce maximum history size
+	if len(clipboard) >= maxHistory {
+		clipboard = clipboard[1:]
+	}
+
+	clipboard = append(clipboard, ClipboardData{
+		Text:      lastCopied,
+		Timestamp: time.Now(),
+	})
+
+	return saveClipboard()
+}
+
+func getClipboardContent() (string, error) {
+	cmd := exec.Command("wl-paste")
+	output, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return string(output), nil
 }
 
 func main() {
-	for {
-		cmd := exec.Command("wl-paste")
-		output, err := cmd.Output()
-		if err != nil {
-			log.Fatalln("failed to execute wl-paste cmd:", err)
-		}
-		updateJSON(string(output))
-		time.Sleep(5 * time.Second)
+	// Load existing clipboard history
+	if err := loadClipboard(); err != nil {
+		log.Fatalf("Failed to load clipboard: %v", err)
 	}
+	log.Println("Clipboard monitor started")
 
+	// Handle graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-sigChan:
+			log.Println("Shutting down gracefully")
+			return
+		case <-ticker.C:
+			content, err := getClipboardContent()
+			if err != nil {
+				log.Printf("Failed to read clipboard: %v", err)
+				continue
+			}
+
+			if err := updateClipboard(content); err != nil {
+				log.Printf("Failed to update clipboard: %v", err)
+			}
+		}
+	}
 }
